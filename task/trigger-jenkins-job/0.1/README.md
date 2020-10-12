@@ -24,6 +24,11 @@ kubectl apply -f https://raw.githubusercontent.com/tektoncd/catalog/master/task/
         - FILE_LOCATION_AS_SET_IN_JENKINS=@PATH_TO_FILE
   ```
 
+If the first argument to `JOB_PARAMS` is a parameter called
+`get_last_console_output` it will fetch the console output location of the last job.
+
+- **SAVE_OUTPUT_LOCATION**: The location where to save the jenkins output of the issued command (_Default_: "")
+
 ## Workspaces
 
 - **source**: In case any file needs to be provided to the Jenkins Job. (_Default_: `emptyDir: {}`)

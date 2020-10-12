@@ -17,6 +17,8 @@ spec:
       description: >-
         The workspace which can be used to mount files which can be
         send via CURL request to Jenkins job.
+  results:
+    - name: job_number
   params:
     - name: JENKINS_HOST_URL
       type: string
@@ -32,6 +34,14 @@ spec:
       type: array
       description: Extra arguments to append as a part of CURL request
       default: [""]
+    - name: SAVE_OUTPUT_LOCATION
+      type: string
+      description: Save the output of the job to this location
+      default: ""
+    - name: JOB_WAIT_FINISH
+      type: string
+      description: Set this to True if you want to wait the job to finish after starting it.
+      default: "False"
   steps:
     - name: trigger-pipeline
       image: registry.access.redhat.com/ubi8/ubi:latest
@@ -43,6 +53,8 @@ spec:
         import base64
         import http.cookiejar
         import os
+        import time
+        import json
         import sys
         import urllib.request
 
@@ -50,6 +62,8 @@ spec:
         JOB_NAME = """$(params.JOB_NAME)"""
         USERNAME = os.getenv("USERNAME")
         APITOKEN = os.getenv("API_TOKEN")
+        SAVE_OUTPUT_LOCATION = """$(params.SAVE_OUTPUT_LOCATION)"""
+        JOB_WAIT_FINISH = """$(params.JOB_WAIT_FINISH)"""
 
         def build_args(args):
             data = {}
@@ -67,25 +81,40 @@ spec:
 
         def get_crumb(headers, cookiejar):
             url = f"{JENKINS_URL}/crumbIssuer/api/xml?xpath=concat(//crumbRequestField,%22:%22,//crumb)"
-            opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cookiejar))
+            opener = urllib.request.build_opener(
+                urllib.request.HTTPCookieProcessor(cookiejar))
             opener.addheaders = headers
             return opener.open(url)
 
 
-        def main():
-            data, filename = build_args(sys.argv[1:])
+        def get_job_information(headers, cookiejar, build_number='lastBuild'):
+            url = f"{JENKINS_URL}/job/{JOB_NAME}/{build_number}/api/json?depth=0"
+            opener = urllib.request.build_opener(
+                urllib.request.HTTPCookieProcessor(cookiejar))
+            opener.addheaders = headers
+            return json.loads(opener.open(url).read())
 
-            if data:
-                query_type = "buildWithParameters"
+
+        def main():
+            data = None
+            filename = ""
+            if len(sys.argv) == 2 and sys.argv[1].startswith("get_console_output="):
+                number = sys.argv[1].split("=")[1]
+                query_type = f"{number}/consoleText"
             else:
-                query_type = "build"
+                data, filename = build_args(sys.argv[1:])
+                if data:
+                    query_type = "buildWithParameters"
+                else:
+                    query_type = "build"
             job_url = f"{JENKINS_URL}/job/{JOB_NAME}/{query_type}"
 
             jarhead = http.cookiejar.CookieJar()
             base64string = base64.b64encode(f"{USERNAME}:{APITOKEN}".encode("utf-8"))
             headers = [("Authorization", f"Basic {base64string.decode('utf-8')}")]
 
-            crumb = get_crumb(headers, jarhead).read().decode().replace("Jenkins-Crumb:", "")
+            crumb = get_crumb(headers,
+                              jarhead).read().decode().replace("Jenkins-Crumb:", "")
             headers.append(("Jenkins-Crumb", crumb))
 
             request = urllib.request.Request(job_url, data=data)
@@ -94,11 +123,39 @@ spec:
                 headers.append(("Content-Length", os.stat(filename).st_size))
                 request = urllib.request.Request(job_url, open(filename, "rb"))
 
-            opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jarhead))
+            opener = urllib.request.build_opener(
+                urllib.request.HTTPCookieProcessor(jarhead))
             opener.addheaders = headers
+
+            build_info_current = get_job_information(headers, jarhead)
             with opener.open(request) as handle:
-                print(f"Job has started, status: {handle.status}")
-                handle.read().decode("utf-8")
+                if query_type.startswith("build"):
+                    print(f"Job {JOB_NAME} has started, status: {handle.status}")
+                output = handle.read().decode("utf-8")
+                if output:
+                    print(output)
+                if SAVE_OUTPUT_LOCATION:
+                    print(f"Saving log to {SAVE_OUTPUT_LOCATION}")
+                    open(SAVE_OUTPUT_LOCATION, 'w').write(output)
+            if query_type.startswith("build") and JOB_WAIT_FINISH.lower() == "true":
+                job = get_job_information(headers, jarhead)
+                while build_info_current['id'] == job['id']:
+                    job = get_job_information(headers, jarhead)
+                    print(f"Waiting that job {JOB_NAME} has started")
+                    time.sleep(5)
+
+                job_number = job['id']
+                open("""$(results.job_number.path)""", 'w').write(str(job_number))
+                print(f"Job {JOB_NAME}#{job_number} has started")
+                while True:
+                    if 'building' in job and job['building']:
+                        job = get_job_information(headers, jarhead, job_number)
+                        print(f"Waiting that job {JOB_NAME}#{job_number} has finished building")
+                        time.sleep(5)
+                        continue
+                    break
+                print(f"Job {JOB_NAME}#{job_number} has finished")
+
         main()
 
       env:
