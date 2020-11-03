@@ -1,0 +1,48 @@
+---
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: tekton-object-role
+rules:
+- apiGroups: ["tekton.dev"]
+  resources: ["pipelineruns", "taskruns"]
+  verbs: ["get", "list", "watch", "delete", "create", "patch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: tekton-object-role-binding
+subjects:
+- kind: ServiceAccount
+  name: tekton-object-role-sa
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: tekton-object-role
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tekton-object-role-sa
+
+---
+apiVersion: tekton.dev/v1beta1
+kind: TaskRun
+metadata:
+  name: tekton-objects-cleanup-test-run
+spec:
+  params:
+  - name: max_number
+    value: "1"
+  - name: no_execute
+    value: "true"
+  - name: object
+    value: "taskrun"
+  - name: labels
+    value: "testme=please"
+  serviceAccountName: tekton-object-role-sa
+  taskRef:
+    kind: Task
+    name: tekton-objects-cleanup
