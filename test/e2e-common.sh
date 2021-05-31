@@ -184,6 +184,8 @@ function show_failure() {
     ${KUBECTL_CMD} get -n ${tns} pipelinerun -o yaml
     echo "--- TaskRun Dump"
     ${KUBECTL_CMD} get -n ${tns} taskrun -o yaml
+    echo "--- Namespace ${tns} Events Dump"
+    ${KUBECTL_CMD} get -n ${tns} events
     echo "--- Container Logs"
     for pod in $(${KUBECTL_CMD} get pod -o name -n ${tns}); do
         ${KUBECTL_CMD} logs --all-containers -n ${tns} ${pod} || true
