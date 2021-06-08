@@ -14,6 +14,7 @@ kubectl apply -f https://raw.githubusercontent.com/tektoncd/catalog/master/task/
 
 - **source**: A workspace that contains the working directory to share among
   Tasks.
+- **dockerconfig**: An optional workspace for the docker config
 
 ## Parameters
 

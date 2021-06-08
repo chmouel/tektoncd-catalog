@@ -36,6 +36,8 @@ spec:
       description: Task runtime image. Should typically contain the kind CLI (https://kind.sigs.k8s.io)
   workspaces:
     - name: source
+    - name: dockerconfig
+      optional: true
   steps:
     - image: $(params.image)
       workingDir: $(workspaces.source.path)
